@@ -43,7 +43,7 @@ main = do
 -- METHODS FOR BUILDING THE GRAPH -- 
  
 {-|
-    Builds a list of unique edges (without repition or self-looping)
+    Builds a list of unique edges (without repetition or self-looping)
     Basically, we pick any random two nodes, and if no edge exists between them,
     we add the new edge to a set. 
 -}
