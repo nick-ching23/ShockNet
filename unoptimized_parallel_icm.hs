@@ -4,10 +4,10 @@ import Data.Maybe (catMaybes)
 import qualified Data.Set as Set
 import System.Random
 import Control.Monad
-import Control.Monad.Random
 import Data.List (foldl')
 import Control.Parallel.Strategies
 import GHC.Conc (getNumCapabilities)
+import System.IO.Unsafe (unsafePerformIO)
 
 type SimpleEdge = (Int, Int)
 
@@ -23,8 +23,8 @@ edgesCount = 300000
 numSimulations :: Int
 numSimulations = 1
 
--- MAIN METHOD -- 
 
+-- MAIN METHOD -- 
 {-|
   Main method:
     - builds the graph with specified nodesCount & edgesCount 
@@ -37,9 +37,10 @@ main = do
     putStrLn "Building graph..."
     graph <- buildGraph
     putStrLn "Graph built. Running Monte Carlo simulations..."
-    let seedNodes = [0]
+    let seedNodes = [0] -- represents the starting set of activation nodes for our program.
     averageInfluence <- monteCarloSimulation graph seedNodes numSimulations
     putStrLn $ "Average Influence (Monte Carlo): " ++ show averageInfluence
+
 
 
 -- METHODS FOR BUILDING THE GRAPH -- 
@@ -86,13 +87,13 @@ buildGraph = do
     let nodes = [(i, ()) | i <- [0..nodesCount-1]]
     edges <- generateWeightedEdges edgesCount
     return $ mkGraph nodes edges
- 
+
 
 -- INDEPENDENT CASCADE AND MONTE CARLO SIMULATIONS
 
 {-|
   Perform one run of ICM given a graph and a set of initially activated nodes (seeds). 
-  Refer to the Problem formulation in our report for an explanation of the ICM model    
+  Refer to the Problem formulation in our report for an explanation of the ICM model.    
 -}   
 -- note here we are using stdGen
 independentCascade :: Gr () Double -> [Node] -> Rand StdGen (Set.Set Node)   
@@ -116,45 +117,35 @@ independentCascade graph seeds = go (Set.fromList seeds) (Set.fromList seeds)
             let nextActivated = Set.fromList $ concat nextActivatedList     
             let activatedNodes' = Set.union activatedNodes nextActivated
             go activatedNodes' nextActivated 
-       
-    
-{-|
-  Perform a Monte Carlo simulation of the Independent Cascade model:
-    - given a graph and seed nodes, run the ICM multiple times 
-    - calculate the average influence of the seed set over the number of simulations.
 
-  Parallelization: 
-  The simulation uses parallel strategies to partition the runs among available
-  CPU cores. It splits random number generators per core and utilizes static chunking. 
- 
-  returns the average number of "infected" nodes 
--}
 
-monteCarloSimulation :: Gr () Double -> [Node] -> Int -> IO Double 
-monteCarloSimulation graph seeds numSims = do   
+{- actually executes the independent cascade model.}
+simulateOnce :: Gr () Double -> [Node] -> Double
+simulateOnce g s = unsafePerformIO $ do
+    activatedNodes <- independentCascade g s
+    return $ fromIntegral $ Set.size activatedNodes
+
+-- splits workload into chunks 
+chunkList :: Int -> [a] -> [[a]]
+chunkList _ [] = []
+chunkList n xs = take n xs : chunkList n (drop n xs)
+
+{- By parallelizing the simulations, we utilize multi-cores to work faster. 
+    Here we use parMap and rdeepseq to run chunks in parallel. Each chunk 
+    will then find its local average, and once all chunks are added, we'll 
+    find the collective average influence. 
+}
+monteCarloSimulation :: Gr () Double -> [Node] -> Int -> IO Double
+monteCarloSimulation graph seeds numSims = do
     numCapabilities <- getNumCapabilities
-    stdGen <- getStdGen
-    let gens = take numSims $ iterate (snd . split) stdGen
     let chunkSize = (numSims + numCapabilities - 1) `div` numCapabilities
-    let chunks = chunkList chunkSize gens 
-    let results = parMap rdeepseq (\genChunk -> 
-                    sum [ evalRand (simulateOnce graph seeds) gen | gen <- genChunk ]
-                  ) chunks  
-  
-    let totalActivated = sum results
-    let averageInfluence = totalActivated / fromIntegral numSims   
-    return averageInfluence  
-   
-  where 
-    -- actually executes the independent cascade model once
-    simulateOnce :: Gr () Double -> [Node] -> Rand StdGen Double  
-    simulateOnce g s = do
-        activatedNodes <- independentCascade g s
-        return $ fromIntegral $ Set.size activatedNodes
- 
-    -- splits workload into chunks 
-    chunkList :: Int -> [a] -> [[a]]
-    chunkList _ [] = []
-    chunkList n xs = take n xs : chunkList n (drop n xs) 
+    let workChunks = replicate numCapabilities (replicate chunkSize ())
 
+    let results = parMap rdeepseq (\chunk ->
+                    sum [ simulateOnce graph seeds | _ <- chunk ]
+                  ) workChunks
+
+    let totalActivated = sum results
+    let averageInfluence = totalActivated / fromIntegral numSims
+    return averageInfluence
 
