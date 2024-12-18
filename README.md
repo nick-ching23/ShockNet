@@ -48,3 +48,16 @@ Running the project:
 ```bash
 time ./parallel_icm +RTS -N<your number of cores> -s
 ```
+
+
+## Further Reading
+
+For a comprehensive overview of the methodologies, experiments, and results behind this project, please see the full findings documented in the PDF report:
+
+- [Full Report (PDF)](https://drive.google.com/file/d/1wHpc2bBw1wZRrpp5S9AgA1sCz9sK37ZQ/view?usp=sharing)
+
+This report covers:
+
+- Detailed explanations of the Independent Cascade Model and its theoretical foundations.
+- In-depth discussions on parallelization strategies, algorithm design decisions, and scalability considerations.
+- Result set and development process. 
