@@ -18,7 +18,7 @@ edgesCount :: Int
 edgesCount = 300000
 
 numSimulations :: Int
-numSimulations = 1
+numSimulations = 1000
 
 
 -- MAIN METHOD -- 
@@ -50,16 +50,16 @@ main = do
 
 generateUniqueEdges :: Int -> IO [SimpleEdge]
 generateUniqueEdges n = do
-    let loop acc s
+    let loop s
           | Set.size s >= n = return (Set.toList s)
           | otherwise = do
               i <- randomRIO (0, nodesCount-1)
               j <- randomRIO (0, nodesCount-1)
               if i /= j then 
                   let s' = Set.insert (i,j) s
-                  in loop acc s'
-              else loop acc s
-    loop [] Set.empty
+                  in loop s'
+              else loop s
+    loop Set.empty
 
 
 {-|
